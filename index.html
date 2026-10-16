@@ -1,9 +1,4 @@
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>콩 미로 탐험</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -154,6 +149,14 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
 .chip{padding:12px 22px;border-radius:14px;border:3px solid var(--line);background:var(--bg);font-weight:700;font-size:clamp(1.1rem,2.2vw,1.5rem)}
 .chip:hover{border-color:var(--accent)}
 .chip.done{color:var(--muted)}
+.cnt{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.cnt .chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--gate-edge)}
+.qlist{list-style:none;margin:0;padding:0;display:grid;gap:8px;max-height:52vh;overflow-y:auto}
+.qlist li{background:var(--bg);border:2px solid var(--line);border-radius:14px;padding:10px 14px;display:grid;gap:4px;font-size:clamp(.95rem,1.6vw,1.1rem)}
+.qlist .qq{font-weight:900}
+.qlist .oo{display:flex;flex-wrap:wrap;gap:6px 14px;color:var(--muted);font-weight:700}
+.qlist .oo b{color:var(--good)}
+.qlist .qt{font-weight:700;color:var(--muted);font-size:.9em}
 .names{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .names label{display:grid;gap:4px;font-weight:700;color:var(--muted);font-size:.95rem}
 .names input{font-weight:700;font-size:1.25rem;padding:10px 12px;border-radius:12px;border:3px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
@@ -166,6 +169,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
 .rank .medal{font-family:var(--f-display);font-weight:400;font-size:1.3em}
 .rank .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+.card h2.qtitle{font-size:clamp(1.3rem,2.6vw,2.1rem);text-wrap:wrap}
 .qa{display:grid;grid-template-columns:minmax(0,1fr) clamp(220px,32%,340px);gap:22px;align-items:start}
 .qcol{display:grid;gap:16px;align-content:start}
 .pic{margin:0;border-radius:18px;overflow:hidden;background:#FFF4D6;border:3px solid var(--line);color:#3A2A00}
@@ -192,8 +196,6 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
 }
 </style>
 
-</head>
-<body>
 <main class="app">
   <header class="top">
     <h1>콩 미로 탐험</h1>
@@ -228,6 +230,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
         <button class="rt" data-d="1,0" aria-label="오른쪽">▶</button>
       </div>
       </div>
+      <button class="ghost" id="qview">전체 문제 보기</button>
       <button class="ghost" id="reset">처음부터 다시</button>
     </aside>
   </section>
@@ -243,49 +246,59 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   const CW = 8, CH = 6, W = CW * 2 + 1, H = CH * 2 + 1;
   const GOAL = [W - 2, H - 2];
   const TARGET = 45;          // 미로 정답 길이(칸 수)
-  const TEAMS = 4, PER = 4;   // 모둠 수, 모둠마다 문 개수
+  let TEAMS = 4; const PER = 4, MAXT = 5;   // 모둠 수(4 또는 5), 모둠마다 문 개수
+  try { if (localStorage.getItem('beanTeams') === '5') TEAMS = 5; } catch (e) {}
   const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
 
   const POOL = {
-    tofu:{q:'다음 중 콩으로 만든 음식은 무엇일까요?', o:['두부','쌀밥','감자튀김'], a:0, art:'tofu', photo:'tofu', cap:'두부',
+    tofu:{lv:1, q:'다음 중 콩으로 만든 음식은 무엇일까요?', o:['두부', '쌀밥', '감자전'], a:0, art:'tofu', photo:'tofu', cap:'두부',
       e:'두부는 콩을 갈아서 굳혀 만들어요.'},
-    sprout:{q:'콩에서 싹이 터서 자란 채소는 무엇일까요?', o:['시금치','콩나물','당근'], a:1, art:'sprout', cap:'콩나물',
+    sprout:{lv:1, q:'콩에서 싹이 터서 자란 채소는 무엇일까요?', o:['시금치', '콩나물', '당근'], a:1, art:'sprout', cap:'콩나물',
       e:'콩나물은 콩에 물을 주어 싹을 틔운 채소예요.'},
-    jang:{q:'된장과 간장은 무엇으로 만들까요?', o:['삶은 콩(메주)','밀가루','옥수수'], a:0, art:'jang', photo:'jang', cap:'된장 · 고추장 · 간장',
+    jang:{lv:3, q:'된장과 간장을 만드는 콩 덩어리는?', o:['메주', '송편', '가래떡'], a:0, art:'jang', photo:'jang', cap:'된장 · 고추장 · 간장',
       e:'삶은 콩으로 메주를 만들고, 메주로 된장과 간장을 만들어요.'},
-    noodle:{q:'콩으로 만들지 않은 음식은 무엇일까요?', o:['두유','낫토','쌀국수'], a:2, art:'noodle', cap:'쌀국수',
+    noodle:{lv:2, q:'다음 중 콩으로 만들지 않은 것은 무엇일까요?', o:['두유', '낫토', '쌀국수'], a:2, art:'noodle', cap:'쌀국수',
       e:'쌀국수는 쌀로 만들어요. 두유와 낫토는 콩으로 만들어요.'},
-    kong:{q:'여름에 시원하게 먹는 콩국수의 국물은 무엇으로 만들까요?', o:['삶은 콩을 곱게 간 국물','우유를 끓인 국물','멸치를 우린 국물'], a:0, art:'kong', photo:'kong', cap:'콩국수',
+    kong:{lv:2, q:'콩국수의 국물은 무엇으로 만들까요?', o:['삶은 콩을 곱게 간 국물', '우유를 끓인 국물', '멸치를 우린 국물'], a:0, art:'kong', photo:'kong', cap:'콩국수',
       e:'콩국수는 삶은 콩을 곱게 갈아서 고소한 국물을 만들어요.'},
-    pat:{q:'동짓날에 먹는 팥죽은 무엇으로 쑤어 만들까요?', o:['붉은 팥','검은깨','단호박'], a:0, art:'pat', photo:'pat', cap:'팥죽',
+    pat:{lv:2, q:'동짓날에 먹는 팥죽은 무엇으로 쑤어 만들까요?', o:['붉은 팥', '검은깨', '단호박'], a:0, art:'pat', photo:'pat', cap:'팥죽',
       e:'팥도 콩과 식물이에요. 붉은 팥으로 죽을 쑤고 새알심을 넣어요.'},
-    soymilk:{q:'콩을 갈아서 만든 고소한 음료는 무엇일까요?', o:['두유','식혜','레몬차'], a:0, art:'soymilk', photo:'soymilk', cap:'두유',
+    soymilk:{lv:1, q:'콩을 갈아서 만든 고소한 음료는 무엇일까요?', o:['두유', '식혜', '레몬차'], a:0, art:'soymilk', photo:'soymilk', cap:'두유',
       e:'두유는 콩을 불려 갈아서 만든 음료예요.'},
-    cheong:{q:'콩을 푹 삶아 발효시켜 만든 우리 음식은 무엇일까요?', o:['청국장','김밥','주먹밥'], a:0, art:'cheong', cap:'청국장찌개',
+    cheong:{lv:3, q:'콩을 푹 삶아 발효시켜 만든 음식은 무엇일까요?', o:['청국장', '김밥', '주먹밥'], a:0, art:'cheong', cap:'청국장찌개',
       e:'청국장은 삶은 콩을 발효시켜 만들고, 찌개로 끓여 먹어요.'},
-    seed:{q:'콩은 식물의 어느 부분일까요?', o:['씨앗','뿌리','꽃잎'], a:0, art:'pod', cap:'꼬투리 속 콩',
-      e:'콩은 꼬투리 안에 들어 있는 씨앗이에요. 땅에 심으면 싹이 나요.'},
-    protein:{q:'콩에 많이 들어 있어서 우리 몸을 튼튼하게 도와주는 영양소는 무엇일까요?', o:['단백질','설탕','소금'], a:0, art:'pod', cap:'콩에는 단백질이 많아요',
+    seed:{lv:2, q:'완두콩은 꼬투리 안에 들어 있는 식물의 무엇일까요?', o:['씨앗', '뿌리', '꽃잎'], a:0, art:'pod', cap:'꼬투리 속 콩',
+      e:'완두콩은 꼬투리 안에 들어 있는 씨앗이에요. 땅에 심으면 싹이 나요.'},
+    protein:{lv:3, q:'콩에 많이 들어 있는 영양소는?', o:['단백질', '설탕', '소금'], a:0, art:'pod', cap:'콩에는 단백질이 많아요',
       e:'콩에는 단백질이 많아서 몸을 튼튼하게 만드는 데 도움을 줘요.'},
-    rice:{q:'쌀에 콩을 넣어 지은 밥은 무엇일까요?', o:['콩밥','볶음밥','비빔밥'], a:0, art:'rice', cap:'콩밥',
+    rice:{lv:1, q:'쌀에 콩을 넣어 지은 밥은 무엇일까요?', o:['콩밥', '볶음밥', '비빔밥'], a:0, art:'rice', cap:'콩밥',
       e:'콩밥은 쌀에 콩을 넣어 지은 밥이에요.'},
-    kinds:{q:'다음 중 콩의 종류가 아닌 것은 무엇일까요?', o:['강낭콩','완두콩','방울토마토'], a:2, art:'beans', cap:'여러 가지 콩',
-      e:'방울토마토는 열매채소예요. 강낭콩, 완두콩, 병아리콩은 모두 콩이에요.'},
-    good:{q:'콩의 좋은 점이 아닌 것은 무엇일까요?', o:['몸을 튼튼하게 해 줘요','배를 편안하게 해 줘요','먹으면 키가 줄어들어요'], a:2, art:'pod', cap:'꼬투리 속 콩',
-      e:'콩에는 단백질과 식이섬유가 있어서 몸을 튼튼하게 하고 배를 편안하게 해 줘요.'},
-    snack:{q:'콩을 볶아서 곱게 갈아 만든 고소한 가루는 무엇일까요?', o:['콩가루','밀가루','설탕'], a:0, art:'pod', cap:'콩을 갈아 만든 콩가루',
+    kinds:{lv:2, q:'다음 중 콩의 종류가 아닌 것은?', o:['강낭콩', '완두콩', '토마토'], a:2, art:'beans', cap:'여러 가지 콩',
+      e:'토마토는 열매채소예요. 강낭콩, 완두콩, 병아리콩은 모두 콩이에요.'},
+    good:{lv:2, q:'다음 중 콩으로 만들지 않은 반찬은 무엇일까요?', o:['두부조림', '콩나물무침', '계란말이'], a:2, art:'beans', cap:'콩으로 만든 반찬',
+      e:'계란말이는 달걀로 만들어요. 두부조림은 콩으로 만든 두부로, 콩나물무침은 콩나물로 만들어요.'},
+    snack:{lv:2, q:'볶은 콩을 곱게 갈아 만든 가루는 무엇일까요?', o:['콩가루', '밀가루', '쌀가루'], a:0, art:'pod', cap:'콩을 갈아 만든 콩가루',
       e:'콩가루는 볶은 콩을 곱게 갈아서 만들어요. 고소한 맛이 나요.'},
-    chickpea:{q:'병아리를 닮아서 이름이 붙은 콩은 무엇일까요?', o:['병아리콩','강낭콩','완두콩'], a:0, art:'beans', cap:'병아리콩',
+    chickpea:{lv:2, q:'병아리를 닮아서 이름이 붙은 콩은 무엇일까요?', o:['병아리콩', '강낭콩', '완두콩'], a:0, art:'beans', cap:'병아리콩',
       e:'병아리를 닮은 모양이라서 병아리콩이라고 불러요.'},
-    jaban:{q:'콩을 간장에 졸여 만든 반찬은 무엇일까요?', o:['콩자반','시금치나물','멸치볶음'], a:0, art:'jaban', cap:'콩자반',
+    black:{lv:1, q:'껍질이 검은색인 콩은 무엇일까요?', o:['검은콩', '완두콩', '강낭콩'], a:0, art:'beans', cap:'검은콩',
+      e:'껍질이 까만 콩을 검은콩이라고 해요. 밥에 넣어 먹거나 콩자반을 만들어요.'},
+    meat:{lv:3, q:'"밭에서 나는 고기"라고 불리는 것은 무엇일까요?', o:['콩', '사과', '배추'], a:0, art:'pod', cap:'꼬투리 속 콩',
+      e:'콩에는 고기처럼 단백질이 많아서 "밭에서 나는 고기"라고 불러요.'},
+    common:{lv:2, q:'두부, 두유, 콩국수의 공통 재료는 무엇일까요?', o:['콩', '쌀', '밀'], a:0, art:'tofu', photo:'tofu', cap:'두부',
+      e:'두부, 두유, 콩국수는 모두 콩을 갈아서 만들어요.'},
+    meju:{lv:3, q:'고추장의 재료 중에서 콩으로 만든 것은 무엇일까요?', o:['메줏가루', '고춧가루', '찹쌀가루'], a:0, art:'jang', photo:'jang', cap:'된장 · 고추장 · 간장',
+      e:'고추장은 콩으로 만든 메줏가루에 고춧가루와 찹쌀가루 등을 섞어 만들어요.'},
+    jaban:{lv:2, q:'콩을 간장에 졸여 만든 반찬은 무엇일까요?', o:['콩자반', '시금치', '멸치볶음'], a:0, art:'jaban', cap:'콩자반',
       e:'콩자반은 콩을 간장에 달콤짭짤하게 졸인 반찬이에요.'}
   };
-  // 첫 판은 이 순서(모둠마다 난이도를 비슷하게 맞춤), 다시 섞기를 누르면 16문제를 무작위로 4개씩 나눠요.
+  // 모든 모둠이 쉬운 1문제 + 보통 2문제 + 어려운 1문제, 음식·식물·장/영양 주제도 골고루 나눠요. (다시 섞기도 이 묶음을 모둠에 무작위로 나눠 줘요)
   const DEFAULT_SETS = [
-    ['noodle','tofu','kong','seed'],
-    ['kinds','sprout','pat','rice'],
-    ['good','soymilk','jang','snack'],
-    ['protein','chickpea','cheong','jaban']
+    ['tofu','kong','seed','jang'],
+    ['rice','pat','kinds','protein'],
+    ['soymilk','good','chickpea','meat'],
+    ['sprout','noodle','jaban','meju'],
+    ['black','snack','common','cheong']
   ];
 
   const SV = (label, body) => '<svg viewBox="0 0 200 140" role="img" aria-label="' + label + '"><rect width="200" height="140" fill="#FFF4D6"/>' + body + '</svg>';
@@ -363,7 +376,8 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  let names = ['1모둠','2모둠','3모둠','4모둠'];
+  let allNames = ['1모둠','2모둠','3모둠','4모둠','5모둠'];
+  let names = allNames.slice(0, TEAMS);
   let round = 0, sets = [], results = [];
   let cur = 0, phase = 'intro', g, gates, quiz, px, py, opened, okFirst, busy = false, modalOpen = false;
   let t0 = 0, tick = null, toastT, armT, armed = false;
@@ -403,13 +417,13 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   /* 새 판: 길이가 같은 서로 다른 미로 4개 + 서로 다른 문제 4묶음 */
   function newSession(){
     round++;
-    const keys = round === 1 ? null : shuffle(Object.keys(POOL));
+    const order = round === 1 ? DEFAULT_SETS : shuffle(DEFAULT_SETS);
     const used = new Set(); sets = [];
     for (let t = 0; t < TEAMS; t++){
       let s = round * 211 + t * 53, m, path;
       do { s++; m = genMaze(rng(s)); path = solve(m); } while (path.length !== TARGET || used.has(s));
       used.add(s);
-      const ids = keys ? keys.slice(t * PER, t * PER + PER) : DEFAULT_SETS[t];
+      const ids = round === 1 ? order[t] : shuffle(order[t]);
       sets.push({g: m, path, quiz: ids.map(k => POOL[k])});
     }
     results = names.map(() => null);
@@ -477,7 +491,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       names.map((n, i) => i === skip ? '' : '<button class="chip' + (results[i] ? ' done' : '') + '" data-t="' + i + '">' + esc(n) + (results[i] ? ' ✓' : '') + '</button>').join('') + '</div>';
   }
   function bindPicker(pre){
-    card.querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { if (pre) pre(); loadTeam(+b.dataset.t); }));
+    card.querySelectorAll('.pick .chip').forEach(b => b.addEventListener('click', () => { if (pre) pre(); loadTeam(+b.dataset.t); }));
   }
   function showIntro(){
     showCard(
@@ -485,12 +499,32 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       '<ul class="learn"><li>모둠마다 다른 미로와 다른 문제가 나와요. 미로 길이는 모두 똑같아요.</li>' +
       '<li>문 ' + PER + '개를 열고 식탁까지 가면 끝!</li>' +
       '<li>처음에 맞힌 문제가 많을수록, 시간이 짧을수록 높은 순위예요.</li></ul>' +
+      '<p class="sec">모둠 수</p><div class="cnt"><button class="chip' + (TEAMS === 4 ? ' on' : '') + '" data-c="4">4모둠</button><button class="chip' + (TEAMS === 5 ? ' on' : '') + '" data-c="5">5모둠</button><button class="ghost" id="qv2">문제 미리 보기</button></div>' +
       '<div class="names">' + names.map((n, i) => '<label for="n' + i + '">' + (i + 1) + '번 모둠 이름<input id="n' + i + '" maxlength="8" value="' + esc(n) + '"></label>').join('') + '</div>' +
       pickerHTML('도전할 모둠을 눌러요. 순서는 마음대로 골라도 돼요.', -1));
     card.querySelectorAll('.names input').forEach((inp, i) => inp.addEventListener('input', () => {
-      card.querySelectorAll('.chip')[i].textContent = inp.value.trim() || (i + 1) + '모둠';
+      card.querySelectorAll('.pick .chip')[i].textContent = inp.value.trim() || (i + 1) + '모둠';
     }));
     bindPicker(readNames);
+    card.querySelectorAll('.cnt .chip').forEach(b => b.addEventListener('click', () => {
+      readNames(); names.forEach((n, i) => allNames[i] = n);
+      TEAMS = +b.dataset.c; names = allNames.slice(0, TEAMS);
+      try { localStorage.setItem('beanTeams', String(TEAMS)); } catch (e) {}
+      round = 0; newSession();
+    }));
+    $('#qv2').addEventListener('click', () => { readNames(); showList(); });
+  }
+  /* 전체 문제 보기 */
+  function showList(){
+    const keys = Object.keys(POOL);
+    const back = phase === 'intro' ? 'intro' : (phase === 'play' ? 'close' : 'pick');
+    showCard('<p class="tag">전체 문제 ' + keys.length + '개</p><p class="big">문제와 정답을 확인해요</p>' +
+      '<p class="sec">초록색 글씨가 정답이에요.</p>' +
+      '<ol class="qlist">' + keys.map((k, n) => { const d = POOL[k];
+        return '<li><span class="qq">' + (n + 1) + '. ' + esc(d.q) + '' + '</span>' +
+          '<span class="oo">' + d.o.map((o, i) => i === d.a ? '<b>✔ ' + esc(o) + '</b>' : '<span>' + esc(o) + '</span>').join('') + '</span></li>'; }).join('') + '</ol>' +
+      '<div class="row"><button class="go" id="qback">돌아가기</button></div>');
+    $('#qback').addEventListener('click', () => { if (back === 'intro') showIntro(); else if (back === 'pick') pickCard(); else closeModal(); });
   }
   function pickCard(){
     showCard('<p class="tag">모둠 대결</p><p class="big">도전할 모둠을 골라요</p>' + pickerHTML('이름을 누르면 그 모둠 차례가 돼요. ✓ 는 이미 끝난 모둠이에요.', -1));
@@ -590,7 +624,8 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
     const opts = shuffle(d.o.map((t, j) => ({t, ok: j === d.a})));
     showCard(
       '<p class="tag">' + esc(names[cur]) + ' · 문 ' + (gt.i + 1) + ' / ' + quiz.length + '</p>' +
-      '<div class="qa"><div class="qcol"><h2>' + d.q + '</h2>' +
+      '<h2 class="qtitle">' + d.q + '</h2>' +
+      '<div class="qa"><div class="qcol">' +
       '<div class="opts">' + opts.map((o, j) => '<button class="opt" data-j="' + j + '">' + o.t + '</button>').join('') + '</div>' +
       '<p class="fb" id="fb" aria-live="polite"></p>' +
       '<div class="row" id="act"></div></div>' +
@@ -652,9 +687,9 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
     newSession();
   });
 
+  $('#qview').addEventListener('click', () => { if (phase === 'play' || phase === 'countdown') return; showList(); });
   newSession();
 })();
 </script>
 
-</body>
-</html>
+</body></html>
