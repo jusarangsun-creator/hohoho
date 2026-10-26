@@ -97,6 +97,11 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   padding:6px 20px; border-radius:999px; transition:opacity .2s, transform .2s; max-width:92%; text-align:center;
 }
 .toast.on{opacity:1;transform:translate(-50%,0)}
+.trail{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none;overflow:visible}
+.trail polyline{fill:none;stroke:#E2762B;stroke-width:.3;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.wb{margin:0;padding:10px 18px;border-radius:16px;background:var(--bad);color:var(--bg);font-family:var(--f-display);font-size:clamp(1.3rem,2.8vw,2rem);line-height:1.3;text-align:center;text-wrap:balance}
+.wb.boing{animation:boing .6s ease-out}
+@keyframes boing{0%{transform:scale(.3);opacity:0}35%{transform:scale(1.18);opacity:1}55%{transform:scale(.92)}75%{transform:scale(1.05)}100%{transform:scale(1)}}
 .count{
   position:absolute; inset:0; z-index:6; display:grid; place-items:center; pointer-events:none; border-radius:12px;
   background:rgba(0,0,0,.28); color:#fff; font-family:var(--f-display); font-size:clamp(5rem,26cqw,15rem); line-height:1;
@@ -170,6 +175,11 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
 .rank .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .card h2.qtitle{font-size:clamp(1.3rem,2.6vw,2.1rem);text-wrap:wrap}
+.tablet .board,.tablet #qview,.tablet #reset,.tablet #rec{display:none}
+.tablet .sub{display:none}
+.recrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:10px;align-items:center;font-weight:700}
+.recrow select,.recrow input{font:inherit;font-weight:700;padding:8px 10px;border-radius:10px;border:2px solid var(--line);background:var(--bg);color:var(--ink);width:5.2em}
+.recrow span{font-size:.9rem;color:var(--muted)}
 .qa{display:grid;grid-template-columns:minmax(0,1fr) clamp(220px,32%,340px);gap:22px;align-items:start}
 .qcol{display:grid;gap:16px;align-content:start}
 .pic{margin:0;border-radius:18px;overflow:hidden;background:#FFF4D6;border:3px solid var(--line);color:#3A2A00}
@@ -191,7 +201,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   .side{grid-template-columns:minmax(0,1fr)}
 }
 @media (prefers-reduced-motion:reduce){
-  .bean,.gate,.pic.show,.count.pop span{animation:none}
+  .bean,.gate,.pic.show,.count.pop span,.wb.boing{animation:none}
   .player{transition:none}
 }
 </style>
@@ -211,6 +221,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   <section class="stage">
     <div class="mazewrap" id="wrap">
       <div class="maze" id="maze" aria-label="미로"></div>
+      <svg class="trail" id="trail" viewBox="0 0 17 13" preserveAspectRatio="none" aria-hidden="true"><polyline id="trailLine" points=""/></svg>
       <div class="player" id="player"><div class="bean"></div></div>
       <div class="toast" id="toast" role="status"></div>
       <div class="count" id="count" hidden><span></span></div>
@@ -230,7 +241,9 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
         <button class="rt" data-d="1,0" aria-label="오른쪽">▶</button>
       </div>
       </div>
+      <button class="ghost" id="rec">기록 직접 입력</button>
       <button class="ghost" id="qview">전체 문제 보기</button>
+      <button class="ghost" id="snd" aria-pressed="true">🔊 소리 켜짐</button>
       <button class="ghost" id="reset">처음부터 다시</button>
     </aside>
   </section>
@@ -246,8 +259,13 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   const CW = 8, CH = 6, W = CW * 2 + 1, H = CH * 2 + 1;
   const GOAL = [W - 2, H - 2];
   const TARGET = 45;          // 미로 정답 길이(칸 수)
-  let TEAMS = 4; const PER = 4, MAXT = 5;   // 모둠 수(4 또는 5), 모둠마다 문 개수
-  try { if (localStorage.getItem('beanTeams') === '5') TEAMS = 5; } catch (e) {}
+  const QS = new URLSearchParams(location.search);
+  const TABLET = QS.has('tablet') || QS.has('team');            // 모둠별 태블릿 모드 (동시에 진행)
+  const FIXED = Math.min(5, Math.max(0, parseInt(QS.get('team'), 10) || 0));   // ?team=3 이면 3모둠으로 고정
+  if (TABLET) document.body.classList.add('tablet');
+  let TEAMS = 4; const PER = 4, MAXT = 5;   // 모둠 수(2, 4 또는 5), 모둠마다 문 개수
+  try { const sv = localStorage.getItem('beanTeams'); if (sv === '5' || sv === '2') TEAMS = +sv; } catch (e) {}
+  if (TABLET) TEAMS = 5;
   const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
 
   const POOL = {
@@ -267,8 +285,8 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       e:'두유는 콩을 불려 갈아서 만든 음료예요.'},
     cheong:{lv:3, q:'콩을 푹 삶아 발효시켜 만든 음식은 무엇일까요?', o:['청국장', '김밥', '주먹밥'], a:0, art:'cheong', cap:'청국장찌개',
       e:'청국장은 삶은 콩을 발효시켜 만들고, 찌개로 끓여 먹어요.'},
-    seed:{lv:2, q:'완두콩은 꼬투리 안에 들어 있는 식물의 무엇일까요?', o:['씨앗', '뿌리', '꽃잎'], a:0, art:'pod', cap:'꼬투리 속 콩',
-      e:'완두콩은 꼬투리 안에 들어 있는 씨앗이에요. 땅에 심으면 싹이 나요.'},
+    fiber:{lv:2, q:'콩에 들어 있어서 배를 편안하게 해 주고 화장실 가는 것을 도와주는 것은 무엇일까요?', o:['식이섬유', '소금', '사탕'], a:0, art:'beans', cap:'식이섬유가 풍부한 콩',
+      e:'콩에는 식이섬유가 풍부해서 배를 편안하게 해 줘요.'},
     protein:{lv:3, q:'콩에 많이 들어 있는 영양소는?', o:['단백질', '설탕', '소금'], a:0, art:'pod', cap:'콩에는 단백질이 많아요',
       e:'콩에는 단백질이 많아서 몸을 튼튼하게 만드는 데 도움을 줘요.'},
     rice:{lv:1, q:'쌀에 콩을 넣어 지은 밥은 무엇일까요?', o:['콩밥', '볶음밥', '비빔밥'], a:0, art:'rice', cap:'콩밥',
@@ -294,7 +312,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
   };
   // 모든 모둠이 쉬운 1문제 + 보통 2문제 + 어려운 1문제, 음식·식물·장/영양 주제도 골고루 나눠요. (다시 섞기도 이 묶음을 모둠에 무작위로 나눠 줘요)
   const DEFAULT_SETS = [
-    ['tofu','kong','seed','jang'],
+    ['tofu','kong','fiber','jang'],
     ['rice','pat','kinds','protein'],
     ['soymilk','good','chickpea','meat'],
     ['sprout','noodle','jaban','meju'],
@@ -428,9 +446,9 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
     }
     results = names.map(() => null);
     cur = 0; phase = 'intro';
-    stopTimer(); $('#tTime').textContent = '00:00.0';
+    stopTimer(); stopBgm(); $('#tTime').textContent = '00:00.0';
     showMaze(0, true);
-    showIntro();
+    if (TABLET) tabletStart(); else showIntro();
     renderBoard(); header();
   }
 
@@ -445,6 +463,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
     let html = '';
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) html += tileHTML(x, y);
     mazeEl.innerHTML = html;
+    resetTrail();
     place(); header();
   }
   function tileHTML(x, y){
@@ -458,6 +477,21 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
     const t = document.createElement('template');
     t.innerHTML = tileHTML(x, y);
     mazeEl.children[y * W + x].replaceWith(t.content.firstElementChild);
+  }
+  /* 지나간 길 선: 앞으로 가면 이어서 그리고, 왔던 길로 되돌아가면 지워요 (10/17 추가) */
+  const trailEl = document.querySelector('#trail'), trailLine = document.querySelector('#trailLine');
+  let trail = [];
+  function drawTrail(){
+    trailLine.setAttribute('points', trail.map(([x, y]) => (x + .5) + ',' + (y + .5)).join(' '));
+  }
+  function resetTrail(){
+    trailEl.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    trail = [[px, py]]; drawTrail();
+  }
+  function trailStep(){
+    const prev = trail[trail.length - 2];
+    if (prev && prev[0] === px && prev[1] === py) trail.pop(); else trail.push([px, py]);
+    drawTrail();
   }
   function place(){
     playerEl.style.left = (px / W * 100) + '%';
@@ -499,7 +533,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       '<ul class="learn"><li>모둠마다 다른 미로와 다른 문제가 나와요. 미로 길이는 모두 똑같아요.</li>' +
       '<li>문 ' + PER + '개를 열고 식탁까지 가면 끝!</li>' +
       '<li>처음에 맞힌 문제가 많을수록, 시간이 짧을수록 높은 순위예요.</li></ul>' +
-      '<p class="sec">모둠 수</p><div class="cnt"><button class="chip' + (TEAMS === 4 ? ' on' : '') + '" data-c="4">4모둠</button><button class="chip' + (TEAMS === 5 ? ' on' : '') + '" data-c="5">5모둠</button><button class="ghost" id="qv2">문제 미리 보기</button></div>' +
+      '<p class="sec">모둠 수</p><div class="cnt"><button class="chip' + (TEAMS === 2 ? ' on' : '') + '" data-c="2">2모둠</button><button class="chip' + (TEAMS === 4 ? ' on' : '') + '" data-c="4">4모둠</button><button class="chip' + (TEAMS === 5 ? ' on' : '') + '" data-c="5">5모둠</button><button class="ghost" id="qv2">문제 미리 보기</button></div>' +
       '<div class="names">' + names.map((n, i) => '<label for="n' + i + '">' + (i + 1) + '번 모둠 이름<input id="n' + i + '" maxlength="8" value="' + esc(n) + '"></label>').join('') + '</div>' +
       pickerHTML('도전할 모둠을 눌러요. 순서는 마음대로 골라도 돼요.', -1));
     card.querySelectorAll('.names input').forEach((inp, i) => inp.addEventListener('input', () => {
@@ -526,11 +560,43 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       '<div class="row"><button class="go" id="qback">돌아가기</button></div>');
     $('#qback').addEventListener('click', () => { if (back === 'intro') showIntro(); else if (back === 'pick') pickCard(); else closeModal(); });
   }
+  /* 태블릿: 우리 모둠을 고르거나(?tablet), 주소에 모둠 번호가 있으면(?team=3) 바로 시작 */
+  function tabletStart(){
+    if (FIXED && FIXED <= MAXT){ loadTeam(FIXED - 1); return; }
+    showCard('<p class="tag">모둠 대결</p><p class="big">우리 모둠을 눌러요</p>' +
+      '<div class="pick">' + allNames.map((n, i) => '<button class="chip" data-t="' + i + '">' + esc(n) + '</button>').join('') + '</div>' +
+      '<p class="sec">다른 모둠을 누르면 안 돼요. 우리 모둠이 맞는지 꼭 확인해요.</p>');
+    card.querySelectorAll('.pick .chip').forEach(b => b.addEventListener('click', () => loadTeam(+b.dataset.t)));
+  }
+  /* 선생님이 모둠 기록을 직접 입력 */
+  function showRecord(){
+    const rows = names.map((n, i) => {
+      const r = results[i], t = r ? Math.floor(r.ms / 100) / 10 : '';
+      return '<div class="recrow"><label>' + esc(n) + '</label>' +
+        '<span>맞힌 수 <select data-k="ok' + i + '">' + [0,1,2,3,4].map(v => '<option' + (r && r.ok === v ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></span>' +
+        '<span>분 <input type="number" min="0" max="59" data-k="m' + i + '" value="' + (r ? Math.floor(t / 60) : '') + '"></span>' +
+        '<span>초 <input type="number" min="0" max="59.9" step="0.1" data-k="s' + i + '" value="' + (r ? (t % 60).toFixed(1) : '') + '"></span></div>';
+    }).join('');
+    showCard('<p class="tag">기록 직접 입력</p><p class="big">태블릿 기록을 입력해요</p>' +
+      '<p class="sec">기록이 있는 모둠만 채워요. 분·초를 비워 두면 기록 없음이에요.</p>' + rows +
+      '<div class="row"><button class="go" id="recok">순위 보기</button><button class="ghost" id="reccx">닫기</button></div>');
+    $('#reccx').addEventListener('click', () => (phase === 'intro' ? showIntro() : pickCard()));
+    $('#recok').addEventListener('click', () => {
+      const v = k => card.querySelector('[data-k="' + k + '"]').value;
+      names.forEach((n, i) => {
+        if (v('m' + i) === '' && v('s' + i) === '') return;
+        const ms = Math.round(((+v('m' + i) || 0) * 60 + (+v('s' + i) || 0)) * 1000);
+        results[i] = {ok: +v('ok' + i), ms};
+      });
+      showFinal();
+    });
+  }
   function pickCard(){
     showCard('<p class="tag">모둠 대결</p><p class="big">도전할 모둠을 골라요</p>' + pickerHTML('이름을 누르면 그 모둠 차례가 돼요. ✓ 는 이미 끝난 모둠이에요.', -1));
     bindPicker();
   }
   function loadTeam(i){
+    stopBgm();
     cur = i; phase = 'ready';
     showMaze(i); renderBoard();
     $('#tTime').textContent = '00:00.0';
@@ -541,31 +607,91 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       '<p class="fb">준비가 되면 시작을 누르세요. 3, 2, 1 뒤에 시간이 흐르기 시작해요.</p>' +
       '<p class="how"><b>움직이는 방법</b> 오른쪽의 ▲◀▼▶ 버튼을 누르거나, 키보드 방향키를 누르거나, 미로 칸을 눌러요. 노란 ? 문 앞에 가면 문제가 나와요.</p>' +
       '<div class="row"><button class="go" id="start">시작!</button></div>' +
-      pickerHTML('다른 모둠으로 바꾸기', i));
+      (TABLET ? (FIXED ? '' : '<div class="row"><button class="ghost" id="chg">모둠 다시 고르기</button></div>') : pickerHTML('다른 모둠으로 바꾸기', i)));
     $('#start').focus();
     $('#start').addEventListener('click', countdown);
-    bindPicker();
+    if (TABLET){ const c = $('#chg'); if (c) c.addEventListener('click', tabletStart); } else bindPicker();
   }
+  /* 소리: 외부 파일 없이 브라우저에서 직접 만들어요 (8비트 느낌) */
+  let AC = null, master = null, muted = false, bgmT = null, bgmNext = 0, bgmStep = 0;
+  function audio(){
+    if (!AC){
+      try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = muted ? 0 : 1; master.connect(AC.destination); } catch (e) { AC = null; }
+    }
+    if (AC && AC.state === 'suspended') AC.resume();
+    return AC;
+  }
+  const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+  function tone(freq, when, dur, type, vol){
+    if (!AC) return;
+    const o = AC.createOscillator(), gn = AC.createGain();
+    o.type = type; o.frequency.value = freq;
+    gn.gain.setValueAtTime(0.0001, when);
+    gn.gain.exponentialRampToValueAtTime(vol, when + 0.01);
+    gn.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+    o.connect(gn); gn.connect(master); o.start(when); o.stop(when + dur + 0.02);
+  }
+  function beep(final){
+    if (!audio()) return;
+    const t = AC.currentTime;
+    if (final){ tone(1318, t, 0.45, 'square', 0.22); tone(1760, t + 0.12, 0.4, 'square', 0.16); }
+    else tone(880, t, 0.22, 'square', 0.2);
+  }
+  /* 배경음악: 직접 만든 8비트 반복 곡 (멜로디 + 베이스) */
+  const MEL = [69,72,76,72, 74,77,74,72, 71,74,77,74, 76,0,72,0,
+               69,72,76,81, 79,76,74,72, 71,74,71,67, 69,0,0,0];
+  const BASS = [45,41,43,45];
+  function bgmSchedule(){
+    if (!AC) return;
+    const STEP = 0.19;
+    while (bgmNext < AC.currentTime + 0.4){
+      const i = bgmStep % MEL.length, m = MEL[i];
+      if (m) tone(mtof(m), bgmNext, STEP * 0.85, 'square', 0.055);
+      if (i % 2 === 0){ const root = BASS[Math.floor(i / 8) % 4]; tone(mtof(i % 4 === 0 ? root : root + 12), bgmNext, STEP * 1.6, 'triangle', 0.12); }
+      bgmNext += STEP; bgmStep++;
+    }
+  }
+  function startBgm(){
+    if (bgmT || !audio()) return;
+    bgmStep = 0; bgmNext = AC.currentTime + 0.05; bgmSchedule();
+    bgmT = setInterval(bgmSchedule, 100);
+  }
+  function stopBgm(){ clearInterval(bgmT); bgmT = null; }
+  $('#snd').addEventListener('click', () => {
+    muted = !muted; audio();
+    if (master) master.gain.value = muted ? 0 : 1;
+    const b = $('#snd'); b.textContent = muted ? '🔇 소리 꺼짐' : '🔊 소리 켜짐'; b.setAttribute('aria-pressed', String(!muted));
+  });
+
   async function countdown(){
     closeModal(); phase = 'countdown'; renderBoard();
+    audio(); stopBgm();
     countEl.hidden = false;
     for (const n of ['3','2','1','출발!']){
       countEl.firstElementChild.textContent = n;
       countEl.classList.remove('pop'); void countEl.offsetWidth; countEl.classList.add('pop');
+      beep(n === '출발!');
       await sleep(n === '출발!' ? 500 : 800);
     }
     countEl.hidden = true;
-    phase = 'play'; t0 = performance.now();
+    phase = 'play'; t0 = performance.now(); startBgm();
     tick = setInterval(() => { $('#tTime').textContent = fmt(performance.now() - t0); }, 100);
   }
   function stopTimer(){ clearInterval(tick); tick = null; }
 
   function finishTeam(){
-    stopTimer();
+    stopTimer(); stopBgm();
+    if (AC){ const t = AC.currentTime; [784, 988, 1175, 1568].forEach((f, k) => tone(f, t + k * 0.11, 0.25, 'square', 0.18)); }
     const ms = performance.now() - t0;
     $('#tTime').textContent = fmt(ms);
     results[cur] = {ok: okFirst, ms};
     phase = 'done'; renderBoard();
+    if (TABLET){
+      showCard('<p class="tag">' + esc(names[cur]) + ' 기록</p><p class="big">도착! 수고했어요</p>' +
+        '<div class="res"><span>시간 <b>' + fmt(ms) + '</b></span><span>한 번에 맞힌 문제 <b>' + okFirst + '</b> / ' + PER + '</span></div>' +
+        '<p class="how"><b>선생님께 알려 주세요</b> ' + esc(names[cur]) + ' · ' + okFirst + '/' + PER + ' · ' + fmt(ms) + '</p>');
+      return;
+    }
     const left = results.filter(r => !r).length;
     showCard(
       '<p class="tag">' + esc(names[cur]) + ' 기록</p><p class="big">도착! 수고했어요</p>' +
@@ -610,7 +736,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       if (g[ny]?.[nx] !== 0){ if (!moved) bump(); break; }
       const gt = gates.get(nx+','+ny);
       if (gt && !gt.open){ openQuiz(gt); break; }
-      px = nx; py = ny; moved = true; place();
+      px = nx; py = ny; moved = true; place(); trailStep();
       await sleep(reduce ? 20 : 90);
       if (px === GOAL[0] && py === GOAL[1]){ finishTeam(); break; }
       const opts = DIRS.filter(([a, b]) => !(a === -dx && b === -dy) && g[py+b]?.[px+a] === 0);
@@ -626,6 +752,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       '<p class="tag">' + esc(names[cur]) + ' · 문 ' + (gt.i + 1) + ' / ' + quiz.length + '</p>' +
       '<h2 class="qtitle">' + d.q + '</h2>' +
       '<div class="qa"><div class="qcol">' +
+      '<p class="wb" id="wb" role="alert" hidden>틀렸어요! 다시 정답을 눌러보세요.</p>' +
       '<div class="opts">' + opts.map((o, j) => '<button class="opt" data-j="' + j + '">' + o.t + '</button>').join('') + '</div>' +
       '<p class="fb" id="fb" aria-live="polite"></p>' +
       '<div class="row" id="act"></div></div>' +
@@ -635,6 +762,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       if (o.ok){
         btn.classList.add('good');
         card.querySelectorAll('.opt').forEach(b => b.disabled = true);
+        $('#wb').hidden = true;
         fb.className = 'fb good'; fb.textContent = '정답! ' + d.e;
         const pic = $('#pic');
         pic.innerHTML = (d.photo ? '<img src="' + PHOTO[d.photo] + '" alt="' + d.cap + '">' : ART[d.art]) + '<figcaption>' + d.cap + '</figcaption>';
@@ -645,7 +773,9 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
       } else {
         gt.wrong = true;
         btn.classList.add('bad'); btn.disabled = true;
-        fb.className = 'fb bad'; fb.textContent = '아쉬워요. 다른 답을 골라 봐요!';
+        fb.className = 'fb'; fb.textContent = '';
+        const wb = $('#wb');
+        wb.hidden = false; wb.classList.remove('boing'); void wb.offsetWidth; wb.classList.add('boing');
       }
     }));
   }
@@ -687,6 +817,7 @@ h1{font-family:var(--f-display);font-weight:400;font-size:clamp(1.7rem,3.2vw,2.6
     newSession();
   });
 
+  $('#rec').addEventListener('click', () => { if (phase === 'play' || phase === 'countdown') return; showRecord(); });
   $('#qview').addEventListener('click', () => { if (phase === 'play' || phase === 'countdown') return; showList(); });
   newSession();
 })();
